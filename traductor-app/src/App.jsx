@@ -271,7 +271,7 @@ export default function App() {
       <nav className="relative z-10 w-full bg-[#050208] border-b border-orange-600/30 flex items-center justify-between px-4 md:px-8 py-3 shadow-xl">
         <div className="flex items-center gap-6">
           <div className="w-12 h-12 rounded-full border-2 border-white flex items-center justify-center bg-black overflow-hidden relative">
-             <Globe className="w-6 h-6 text-white" />
+             <img src="/megapark-logo.jpg" alt="Megapark" className="w-full h-full object-cover" />
              <div className="absolute inset-0 border-[1px] border-dashed border-orange-500/50 rounded-full animate-[spin_10s_linear_infinite]" />
           </div>
           <div className="hidden md:flex items-center gap-5 text-white font-black uppercase tracking-widest text-sm font-display">
@@ -444,6 +444,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
