@@ -28,17 +28,7 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadHistory = async () => {
-    const data = await getTranslationHistory();
-    if (data && data.success) {
-      // Backend devuelve newest first (DESC), en un chat necesitamos oldest first (ASC)
-      setHistoryList(data.data.reverse());
-    }
-  };
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
 
   useEffect(() => {
     scrollToBottom();
