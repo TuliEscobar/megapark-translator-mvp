@@ -98,7 +98,7 @@ export default function App() {
       1. If mainly Spanish, translate to German and English.
       2. If mainly German, translate to Spanish and English.
       3. If mainly English, translate to Spanish and German.
-      SPECIAL INSTRUCTION: ONLY if the detected language is GERMAN and the text sounds like a complaint, provide a professional "recommendation" in SPANISH on how the staff should handle it.
+      SPECIAL INSTRUCTION: ONLY if the detected language is GERMAN and the text sounds like a complaint, provide a VERY SHORT (max 12 words) action recommendation in SPANISH.
       Return ONLY JSON: {"detected", "transA", "langA", "transB", "langB", "recommendation"}. Text: "${text}"`;
       
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -118,10 +118,11 @@ export default function App() {
         }
 
         const formattedTranslated = `[${lA}] ${tA}${tB ? `\n[${lB}] ${tB}` : ''}`;
-        const finalOriginalText = (customPrompt && response.langB === 'Spanish') ? response.transB : text;
-
+        
+        // Cuando usamos un consejo, el "original" que guardamos es la respuesta generada
+        // pero para evitar la duplicidad visual, si el customPrompt existe, guardamos solo la respuesta
         const saved = await saveTranslation({
-          original_text: finalOriginalText,
+          original_text: customPrompt ? "Respuesta automática" : text,
           translated_text: formattedTranslated,
           source_language: response.detected || baseLang,
           target_language: `${lA}/${lB}`,
@@ -129,7 +130,7 @@ export default function App() {
         });
 
         if (saved && saved.success) setHistoryList(prev => [...prev, saved.data]);
-        else setHistoryList(prev => [...prev, { id: Date.now(), original_text: finalOriginalText, translated_text: formattedTranslated, source_language: response.detected || baseLang, created_at: new Date().toISOString(), recommendation: response.recommendation }]);
+        else setHistoryList(prev => [...prev, { id: Date.now(), original_text: customPrompt ? "Respuesta automática" : text, translated_text: formattedTranslated, source_language: response.detected || baseLang, created_at: new Date().toISOString(), recommendation: response.recommendation }]);
       }
     } catch (err) {
       setError('Error en la traducción.');
@@ -139,7 +140,7 @@ export default function App() {
   };
 
   const handleUseAdvice = (advice) => {
-    const prompt = `Based on: "${advice}", generate a professional response in SPANISH. Then translate ONLY to GERMAN. Return JSON: {"detected": "Spanish", "transA": "German Translation", "langA": "German", "transB": "Professional Spanish response", "langB": "Spanish"}`;
+    const prompt = `Based on: "${advice}", generate a professional response in SPANISH. Then translate ONLY to GERMAN. Return JSON: {"detected": "Spanish", "transA": "German Translation", "langA": "German", "transB": "", "langB": ""}`;
     processTranslation(advice, prompt);
   };
 
@@ -172,7 +173,7 @@ export default function App() {
           <span className="text-[10px] font-black tracking-widest text-orange-500 uppercase">MEGAPARK</span>
         </div>
         <div className="flex items-center gap-3">
-           <button onClick={() => setHistoryList([])} className="p-2 text-white/30 hover:text-white"><Trash2 className="w-4 h-4" /></button>
+           <button onClick={() => setHistoryList([])} className="p-2 text-white/30 hover:text-white transition-colors"><Trash2 className="w-4 h-4" /></button>
            <button onClick={toggleLanguage} className="px-4 py-2 rounded-full text-[10px] font-black text-black bg-orange-600 uppercase shadow-lg active:scale-95 transition-transform">{baseLang === 'es-ES' ? 'YO: ESPAÑOL' : 'YO: DEUTSCH'}</button>
         </div>
       </nav>
@@ -214,7 +215,7 @@ export default function App() {
                     <motion.div whileTap={{ scale: 0.98 }} onClick={() => handleUseAdvice(item.recommendation)} className="mt-2 p-3 bg-blue-500/10 border border-blue-400/30 rounded-xl flex gap-3 items-start cursor-pointer hover:bg-blue-500/20 transition-all border-dashed">
                       <Lightbulb className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1">Tulito's Advice <span className="text-[7px] bg-blue-500 text-black px-1 rounded uppercase">Tap to use</span></p>
+                        <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1">Tulito's Advice <span className="text-[7px] bg-blue-500 text-black px-1 rounded uppercase font-bold">Use response</span></p>
                         <p className="text-xs text-blue-100/90 font-medium italic">"{item.recommendation}"</p>
                       </div>
                     </motion.div>
