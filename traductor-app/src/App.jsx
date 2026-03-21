@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Globe, Sparkles, Settings, Trash2, Languages, Send, Volume2, Shield, History, X } from 'lucide-react';
+import { Mic, Square, Globe, Sparkles, Trash2, Send, Volume2, History, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { clsx } from 'clsx';
@@ -13,20 +13,36 @@ function cn(...inputs) {
 export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [translationA, setTranslationA] = useState('');
-  const [langA, setLangA] = useState('');
-  const [translationB, setTranslationB] = useState('');
-  const [langB, setLangB] = useState('');
-  const [detectedLang, setDetectedLang] = useState('');
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
   const [baseLang, setBaseLang] = useState('es-ES');
-  const [showHistory, setShowHistory] = useState(false);
   const [historyList, setHistoryList] = useState([]);
+  const [showHistory, setShowHistory] = useState(false); // Used for modal if needed, or we can remove the modal
 
   const recognitionRef = useRef(null);
   const finalTranscriptRef = useRef('');
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const loadHistory = async () => {
+    const data = await getTranslationHistory();
+    if (data && data.success) {
+      // Backend devuelve newest first (DESC), en un chat necesitamos oldest first (ASC)
+      setHistoryList(data.data.reverse());
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [historyList, transcript, isProcessing]);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -92,11 +108,6 @@ export default function App() {
     if (isRecording) {
       recognitionRef.current?.stop();
     } else {
-      setTranslationA('');
-      setLangA('');
-      setTranslationB('');
-      setLangB('');
-      setDetectedLang('');
       setError('');
       setIsRecording(true);
       recognitionRef.current.lang = baseLang;
@@ -113,6 +124,9 @@ export default function App() {
     if (!apiKey || !text) return;
     
     setIsProcessing(true);
+    setTranscript('');
+    finalTranscriptRef.current = '';
+
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       
@@ -140,23 +154,33 @@ export default function App() {
       const response = JSON.parse(cleaned);
 
       if (response) {
-        setDetectedLang(response.detected || '');
-        setTranslationA(response.transA || '');
-        setLangA(response.langA || '');
-        setTranslationB(response.transB || '');
-        setLangB(response.langB || '');
+        const formattedTranslated = `[${response.langA}] ${response.transA}\n[${response.langB}] ${response.transB}`;
         
-        // Guardar asíncronamente en PostgreSQL sin bloquear el UI
-        saveTranslation({
+        // Guardar en BD
+        const saved = await saveTranslation({
           original_text: text,
-          translated_text: `[${response.langA}] ${response.transA} | [${response.langB}] ${response.transB}`,
+          translated_text: formattedTranslated,
           source_language: response.detected || baseLang,
           target_language: `${response.langA}/${response.langB}`
-        }).catch(err => console.error('Error al guardar en BD:', err));
+        });
+
+        if (saved && saved.success) {
+          setHistoryList(prev => [...prev, saved.data]);
+        } else {
+          // Fallback visual si falla la DB
+          setHistoryList(prev => [...prev, {
+            id: Date.now(),
+            original_text: text,
+            translated_text: formattedTranslated,
+            source_language: response.detected || baseLang,
+            created_at: new Date().toISOString()
+          }]);
+        }
       }
     } catch (err) {
       console.error("Translation Error:", err);
       setError('Error al procesar la traducción. Intenta de nuevo.');
+      setTimeout(() => setError(''), 5000);
     } finally {
       setIsProcessing(false);
     }
@@ -175,18 +199,17 @@ export default function App() {
     }
   };
 
-  const speakText = (text, languageName) => {
+  const speakText = (text, langCodeHint) => {
     if (!window.speechSynthesis) return;
-    
     window.speechSynthesis.cancel();
     
     const msg = new SpeechSynthesisUtterance(text);
     let langCode = 'en-US';
-    const lowerLang = (languageName || '').toLowerCase();
+    const lower = (langCodeHint || '').toLowerCase();
     
-    if(lowerLang.includes('spanish') || lowerLang.includes('español')) {
+    if (lower.includes('spanish') || lower.includes('español')) {
       langCode = 'es-ES';
-    } else if(lowerLang.includes('german') || lowerLang.includes('alemán') || lowerLang.includes('deutsch')) {
+    } else if (lower.includes('german') || lower.includes('alemán') || lower.includes('deutsch')) {
       langCode = 'de-DE';
     }
     
@@ -194,15 +217,12 @@ export default function App() {
     window.speechSynthesis.speak(msg);
   };
 
-  const clear = () => {
+  const clearChat = () => {
+    // Si queremos borrar de la BD habría que hacer un endpoint DELETE,
+    // por ahora solo limpiamos la vista local
+    setHistoryList([]);
     setTranscript('');
     finalTranscriptRef.current = '';
-    setTranslationA('');
-    setLangA('');
-    setTranslationB('');
-    setLangB('');
-    setDetectedLang('');
-    setError('');
   };
 
   const toggleLanguage = () => {
@@ -210,229 +230,206 @@ export default function App() {
     setBaseLang(newLang);
   };
 
-  const handleOpenHistory = async () => {
-    const data = await getTranslationHistory();
-    if (data && data.success) {
-      setHistoryList(data.data);
-    }
-    setShowHistory(true);
+  const getPlaceholder = () => {
+    if (baseLang === 'es-ES') return isRecording ? "Escuchando..." : "Toca el micrófono o escribe aquí...";
+    if (baseLang === 'de-DE') return isRecording ? "Zuhören..." : "Tippen Sie auf das Mikrofon oder schreiben...";
+    return isRecording ? "Listening..." : "Tap the mic or type here...";
   };
 
-  const getPlaceholder = () => {
-    if (baseLang === 'es-ES') return isRecording ? "Escuchando..." : "Toca el micrófono para hablar, o escribe tu mensaje aquí...";
-    if (baseLang === 'de-DE') return isRecording ? "Zuhören..." : "Tippen Sie auf das Mikrofon, um zu sprechen, oder schreiben Sie hier...";
-    return isRecording ? "Listening..." : "Tap the mic to speak, or type your message here...";
+  const isOwnMessage = (sourceLang) => {
+    if (!sourceLang) return true;
+    const lower = sourceLang.toLowerCase();
+    if (baseLang === 'es-ES') return lower.includes('spanish') || lower.includes('español') || lower.includes('es');
+    if (baseLang === 'de-DE') return lower.includes('german') || lower.includes('alemán') || lower.includes('de');
+    return true; // Default fallback
   };
 
   return (
     <div className="flex flex-col h-screen w-full relative overflow-hidden font-sans bg-[#0a0510]">
-      {/* History Overlay */}
-      <AnimatePresence>
-        {showHistory && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
-          >
-            <motion.div 
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              className="bg-[#0a0510] p-6 rounded-2xl w-full max-w-2xl border border-orange-500/30 shadow-2xl flex flex-col max-h-[80vh]"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-black text-orange-500 uppercase tracking-tighter">Translation History</h2>
-                <button onClick={() => setShowHistory(false)} className="text-white/50 hover:text-white">
-                  <X className="w-6 h-6"/>
-                </button>
-              </div>
-              <div className="overflow-y-auto custom-scrollbar flex-1 space-y-4 pr-2">
-                {historyList.length === 0 ? (
-                  <p className="text-white/50 text-center py-8 font-medium tracking-wide">No history found.</p>
-                ) : (
-                  historyList.map(item => (
-                    <div key={item.id} className="bg-white/5 p-4 rounded-lg border border-white/10 hover:border-orange-500/30 transition-colors">
-                      <p className="text-white/40 text-[10px] mb-1 uppercase tracking-widest">{new Date(item.created_at).toLocaleString()} | {item.source_language} ? {item.target_language}</p>
-                      <p className="text-white font-medium mb-1 text-sm">{item.original_text}</p>
-                      <p className="text-orange-400 font-bold text-sm">{item.translated_text}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      {/* Background ambient light matching the image */}
+      {/* Background ambient light */}
       <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#1a0b2e] via-[#0a0510] to-[#0a0510] opacity-80" />
       <div className="absolute top-[20%] left-[-10%] w-[50%] h-[50%] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Megapark Navbar */}
+      {/* Navbar */}
       <nav className="relative z-10 w-full bg-[#050208] border-b border-orange-600/30 flex items-center justify-between px-4 md:px-8 py-3 shadow-xl">
         <div className="flex items-center gap-6">
-          <div className="w-12 h-12 rounded-full border-2 border-white flex items-center justify-center bg-black overflow-hidden relative">
+          <div className="w-12 h-12 rounded-full border-2 border-orange-500/50 flex items-center justify-center bg-black overflow-hidden relative shadow-[0_0_15px_rgba(234,88,12,0.3)]">
              <img src="/megapark-logo.jpg" alt="Megapark" className="w-full h-full object-cover" />
-             <div className="absolute inset-0 border-[1px] border-dashed border-orange-500/50 rounded-full animate-[spin_10s_linear_infinite]" />
+             <div className="absolute inset-0 border-[1px] border-dashed border-orange-500/80 rounded-full animate-[spin_10s_linear_infinite] pointer-events-none" />
           </div>
           <div className="hidden md:flex items-center gap-5 text-white font-black uppercase tracking-widest text-sm font-display">
-            <span className="text-orange-500 cursor-pointer">Home</span>
-            <span onClick={handleOpenHistory} className="hover:text-orange-500 cursor-pointer transition-colors">History</span>
+            <span className="text-orange-500 cursor-pointer">Live Chat</span>
             <span className="hover:text-orange-500 cursor-pointer transition-colors">Q-Lounge</span>
             <span className="hover:text-orange-500 cursor-pointer transition-colors">VIP Stage</span>
             <span className="text-orange-500 cursor-pointer">Tickets</span>
-            <span className="hover:text-orange-500 cursor-pointer transition-colors">Jobs</span>
-            <span className="hover:text-orange-500 cursor-pointer transition-colors">More</span>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
            <button 
+             onClick={clearChat}
+             className="px-3 py-1 bg-transparent rounded text-xs font-bold text-white/50 border border-white/20 hover:border-red-500 hover:text-red-500 transition-all uppercase flex items-center gap-1"
+             title="Clear chat view"
+           >
+             <Trash2 className="w-3 h-3" /> Clear
+           </button>
+           <button 
              onClick={toggleLanguage}
              className="px-3 py-1 bg-transparent rounded text-xs font-bold text-orange-500 border border-orange-500 hover:bg-orange-500 hover:text-black transition-all uppercase"
+             title="Change my language"
            >
-             {baseLang === 'es-ES' ? 'EN | DE' : 'DE | ES'}
+             {baseLang === 'es-ES' ? 'YO: ES' : 'YO: DE'}
            </button>
-           
         </div>
       </nav>
 
-      <main className="relative z-10 flex-1 flex flex-col gap-6 p-4 md:p-8 overflow-hidden max-w-5xl mx-auto w-full">
+      {/* Chat Area */}
+      <main className="relative z-10 flex-1 flex flex-col p-4 md:p-8 overflow-y-auto custom-scrollbar max-w-4xl mx-auto w-full pb-32">
         
-        {/* Megapark Welcome Banner */}
-        <div className="flex flex-col items-start mb-2 mt-4">
-          <h1 className="text-4xl md:text-5xl font-black text-orange-500 uppercase tracking-tighter" style={{ textShadow: '2px 2px 0px rgba(0,0,0,0.8)' }}>
-            WELCOME TO MEGAPARK!
-          </h1>
-          <p className="text-orange-400/80 font-medium tracking-wide mt-1 text-sm">
-            The place where <span className="font-bold text-white">LANGUAGES & JOY</span> are shared.
-          </p>
-          <div className="mt-4">
-             <button className="bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-wider text-xs px-6 py-2 rounded-full shadow-lg shadow-orange-600/20 flex items-center gap-2">
-                VIP TRANSLATION <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-             </button>
+        {/* Welcome message bubble */}
+        <div className="flex flex-col items-center mb-8 mt-4 text-center">
+          <div className="bg-black/60 border border-orange-500/20 backdrop-blur-md rounded-2xl px-6 py-4 shadow-xl">
+            <h1 className="text-2xl font-black text-orange-500 uppercase tracking-tighter" style={{ textShadow: '1px 1px 0px rgba(0,0,0,0.8)' }}>
+              MEGAPARK LIVE TRANSLATOR
+            </h1>
+            <p className="text-white/60 text-xs mt-1 font-medium tracking-wide uppercase">
+              Speak or type. Your translation history will appear here.
+            </p>
           </div>
         </div>
 
-        {/* Source Text (Editable) */}
-        <div className={cn("bg-black/60 rounded-xl p-5 flex flex-col border backdrop-blur-md transition-colors min-h-[140px] shadow-2xl", isRecording ? "border-red-500/50" : "border-orange-500/20")}>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-black text-orange-500 uppercase tracking-widest">
-              YOUR MESSAGE {detectedLang && <span className="text-white/50">| {detectedLang}</span>}
-            </span>
-            {isRecording && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-red-500/20 rounded-full border border-red-500/30">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-red-400 uppercase">Recording</span>
-              </div>
-            )}
-          </div>
-          <div className="flex-1 flex flex-col relative">
-            <textarea
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={getPlaceholder()}
-              className="w-full flex-1 bg-transparent text-xl md:text-2xl font-semibold leading-relaxed text-white placeholder:text-white/30 resize-none focus:outline-none"
-            />
-            {transcript && !isRecording && (
-              <button 
-                onClick={handleManualTranslate}
-                className="absolute bottom-0 right-0 p-2 bg-orange-600 hover:bg-orange-500 text-white rounded-full shadow-lg shadow-orange-600/20 transition-transform active:scale-95"
-                title="Translate text"
+        {/* Chat Bubbles */}
+        <div className="flex flex-col gap-6">
+          {historyList.map((item) => {
+            const own = isOwnMessage(item.source_language);
+            return (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                key={item.id} 
+                className={cn("flex flex-col max-w-[85%]", own ? "self-end items-end" : "self-start items-start")}
               >
-                <Send className="w-5 h-5" />
-              </button>
-            )}
-          </div>
-        </div>
+                <span className="text-[10px] text-white/40 mb-1 px-2 uppercase tracking-widest font-bold">
+                  {item.source_language}
+                </span>
+                
+                <div className={cn(
+                  "p-4 rounded-2xl shadow-xl border backdrop-blur-md flex flex-col gap-3 relative group",
+                  own 
+                    ? "bg-orange-950/40 border-orange-500/30 rounded-br-sm" 
+                    : "bg-purple-950/40 border-purple-500/30 rounded-bl-sm"
+                )}>
+                  {/* Texto original grande */}
+                  <p className="text-xl md:text-2xl font-bold text-white leading-snug">
+                    {item.original_text}
+                  </p>
+                  
+                  {/* Linea separadora */}
+                  <div className={cn("h-px w-full opacity-30", own ? "bg-orange-500" : "bg-purple-500")} />
+                  
+                  {/* Traducciónes */}
+                  <div className="flex flex-col gap-2">
+                    {item.translated_text.split('\n').map((line, idx) => {
+                      if (!line.trim()) return null;
+                      // Formato esperado: [English] Hello
+                      const match = line.match(/\[(.*?)\]\s*(.*)/);
+                      const lang = match ? match[1] : '';
+                      const txt = match ? match[2] : line;
+                      
+                      return (
+                        <div key={idx} className="flex flex-col items-start gap-1 w-full">
+                          {lang && <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold block">{lang}</span>}
+                          <div className="flex items-start justify-between w-full gap-4">
+                            <p className="text-base md:text-lg text-orange-200/90 font-medium">
+                              {txt}
+                            </p>
+                            <button 
+                              onClick={() => speakText(txt, lang)}
+                              className="p-1.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors shrink-0"
+                            >
+                              <Volume2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
 
-        <AnimatePresence>
-          {isProcessing && (
+          {/* Current Transcript Bubble (while talking) */}
+          {transcript && (
             <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="flex items-center justify-center py-2 text-orange-500 gap-2"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col max-w-[85%] self-end items-end"
             >
-              <Sparkles className="w-5 h-5 animate-pulse" />
-              <span className="font-bold uppercase tracking-widest text-sm animate-pulse">Translating...</span>
+              <div className="p-4 rounded-2xl shadow-xl border border-orange-500/50 bg-orange-900/20 backdrop-blur-md rounded-br-sm">
+                <p className="text-lg md:text-xl font-bold text-white/80 leading-snug">
+                  {transcript}
+                  <span className="w-2 h-4 ml-1 inline-block bg-orange-500 animate-pulse" />
+                </p>
+              </div>
             </motion.div>
           )}
-        </AnimatePresence>
 
-        {/* Translations Container */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 pb-24">
-          <div className="bg-black/60 backdrop-blur-md rounded-xl p-5 flex flex-col border border-white/10 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-600 to-transparent" />
-            <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-black text-white uppercase tracking-widest">
-                  {langA || 'TRANSLATION 1'}
-                </span>
-                {translationA && (
-                  <button 
-                    onClick={() => speakText(translationA, langA)} 
-                    className="p-2 bg-orange-600/20 text-orange-500 rounded-full hover:bg-orange-600 hover:text-white transition-colors"
-                    title="Play Audio"
-                  >
-                    <Volume2 className="w-5 h-5" />
-                  </button>
-                )}
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <p className="text-xl md:text-2xl font-bold text-white leading-tight">
-                {translationA || <span className="text-white/20 font-normal">Waiting...</span>}
-              </p>
-            </div>
-          </div>
+          {/* Processing Indicator Bubble */}
+          <AnimatePresence>
+            {isProcessing && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="flex flex-col max-w-[85%] self-start items-start"
+              >
+                 <div className="p-3 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md rounded-bl-sm flex items-center gap-2">
+                   <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+                   <span className="text-xs font-bold text-purple-300 uppercase tracking-widest animate-pulse">Translating...</span>
+                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <div className="bg-black/60 backdrop-blur-md rounded-xl p-5 flex flex-col border border-white/10 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-600 to-transparent" />
-            <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-black text-white uppercase tracking-widest">
-                  {langB || 'TRANSLATION 2'}
-                </span>
-                {translationB && (
-                  <button 
-                    onClick={() => speakText(translationB, langB)} 
-                    className="p-2 bg-purple-600/20 text-purple-400 rounded-full hover:bg-purple-600 hover:text-white transition-colors"
-                    title="Play Audio"
-                  >
-                    <Volume2 className="w-5 h-5" />
-                  </button>
-                )}
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <p className="text-xl md:text-2xl font-bold text-white leading-tight">
-                {translationB || <span className="text-white/20 font-normal">Waiting...</span>}
-              </p>
-            </div>
-          </div>
+          <div ref={messagesEndRef} />
         </div>
-
       </main>
 
-      {/* Control Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 z-20 pb-6 flex justify-center bg-gradient-to-t from-black via-black/80 to-transparent pt-12">
-        <div className="flex items-center gap-8">
-          <button 
-            onClick={clear}
-            className="p-3 bg-[#1a0b2e] border border-white/10 rounded-full text-white/50 hover:text-white hover:border-white/30 transition-all"
-            title="Clear all"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
-
+      {/* Input Footer */}
+      <footer className="absolute bottom-0 left-0 right-0 z-20 p-4 md:p-6 flex justify-center bg-gradient-to-t from-black via-[#0a0510] to-transparent">
+        <div className="max-w-3xl w-full flex items-end gap-3 bg-black/80 backdrop-blur-xl border border-white/10 p-2 md:p-3 rounded-3xl shadow-2xl">
+          
           <button 
             onClick={toggleRecording}
             className={cn(
-              "w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl border-4",
+              "w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg",
               isRecording 
-                ? "bg-red-600 border-red-500 shadow-red-600/50 scale-105" 
-                : "bg-orange-600 border-orange-500 shadow-orange-600/40 hover:scale-105 hover:bg-orange-500"
+                ? "bg-red-600 shadow-red-600/50" 
+                : "bg-orange-600 hover:bg-orange-500 shadow-orange-600/30"
             )}
           >
-            {isRecording ? <Square className="text-white w-8 h-8" fill="currentColor" /> : <Mic className="text-white w-10 h-10" />}
+            {isRecording ? <Square className="text-white w-5 h-5" fill="currentColor" /> : <Mic className="text-white w-6 h-6" />}
           </button>
+
+          <textarea
+            value={transcript}
+            onChange={(e) => setTranscript(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={getPlaceholder()}
+            className="flex-1 bg-transparent text-sm md:text-base font-medium text-white placeholder:text-white/30 resize-none focus:outline-none max-h-32 py-3 px-2 custom-scrollbar"
+            rows={1}
+            style={{ minHeight: '48px' }}
+          />
+
+          {!isRecording && transcript.trim() && (
+            <button 
+              onClick={handleManualTranslate}
+              className="w-12 h-12 shrink-0 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-all"
+            >
+              <Send className="w-5 h-5 ml-1" />
+            </button>
+          )}
         </div>
       </footer>
 
@@ -444,10 +441,4 @@ export default function App() {
     </div>
   );
 }
-
-
-
-
-
-
 
