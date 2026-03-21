@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Globe, Sparkles, Settings, Trash2, Languages, Send, Volume2, Shield, History } from 'lucide-react';
+import { Mic, Square, Globe, Sparkles, Settings, Trash2, Languages, Send, Volume2, Shield, History, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { saveTranslation } from './services/api';
+import { saveTranslation, getTranslationHistory } from './services/api';
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -18,11 +18,12 @@ export default function App() {
   const [translationB, setTranslationB] = useState('');
   const [langB, setLangB] = useState('');
   const [detectedLang, setDetectedLang] = useState('');
-  const [apiKey, setApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || '');
-  const [isConfiguring, setIsConfiguring] = useState(!apiKey);
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
   const [baseLang, setBaseLang] = useState('es-ES');
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyList, setHistoryList] = useState([]);
 
   const recognitionRef = useRef(null);
   const finalTranscriptRef = useRef('');
@@ -83,7 +84,8 @@ export default function App() {
 
   const toggleRecording = () => {
     if (!apiKey) {
-      setIsConfiguring(true);
+      setError('API Key no configurada en las variables de entorno (.env).');
+      setTimeout(() => setError(''), 5000);
       return;
     }
 
@@ -206,11 +208,61 @@ export default function App() {
   const toggleLanguage = () => {
     const newLang = baseLang === 'es-ES' ? 'de-DE' : 'es-ES';
     setBaseLang(newLang);
-    alert(`Idioma principal de escucha cambiado a: ${newLang === 'es-ES' ? 'EspaÃ±ol' : 'AlemÃ¡n'}`);
+  };
+
+  const handleOpenHistory = async () => {
+    const data = await getTranslationHistory();
+    if (data && data.success) {
+      setHistoryList(data.data);
+    }
+    setShowHistory(true);
+  };
+
+  const getPlaceholder = () => {
+    if (baseLang === 'es-ES') return isRecording ? "Escuchando..." : "Toca el micrófono para hablar, o escribe tu mensaje aquí...";
+    if (baseLang === 'de-DE') return isRecording ? "Zuhören..." : "Tippen Sie auf das Mikrofon, um zu sprechen, oder schreiben Sie hier...";
+    return isRecording ? "Listening..." : "Tap the mic to speak, or type your message here...";
   };
 
   return (
     <div className="flex flex-col h-screen w-full relative overflow-hidden font-sans bg-[#0a0510]">
+      {/* History Overlay */}
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              className="bg-[#0a0510] p-6 rounded-2xl w-full max-w-2xl border border-orange-500/30 shadow-2xl flex flex-col max-h-[80vh]"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-black text-orange-500 uppercase tracking-tighter">Translation History</h2>
+                <button onClick={() => setShowHistory(false)} className="text-white/50 hover:text-white">
+                  <X className="w-6 h-6"/>
+                </button>
+              </div>
+              <div className="overflow-y-auto custom-scrollbar flex-1 space-y-4 pr-2">
+                {historyList.length === 0 ? (
+                  <p className="text-white/50 text-center py-8 font-medium tracking-wide">No history found.</p>
+                ) : (
+                  historyList.map(item => (
+                    <div key={item.id} className="bg-white/5 p-4 rounded-lg border border-white/10 hover:border-orange-500/30 transition-colors">
+                      <p className="text-white/40 text-[10px] mb-1 uppercase tracking-widest">{new Date(item.created_at).toLocaleString()} | {item.source_language} ? {item.target_language}</p>
+                      <p className="text-white font-medium mb-1 text-sm">{item.original_text}</p>
+                      <p className="text-orange-400 font-bold text-sm">{item.translated_text}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Background ambient light matching the image */}
       <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#1a0b2e] via-[#0a0510] to-[#0a0510] opacity-80" />
       <div className="absolute top-[20%] left-[-10%] w-[50%] h-[50%] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none" />
@@ -224,7 +276,7 @@ export default function App() {
           </div>
           <div className="hidden md:flex items-center gap-5 text-white font-black uppercase tracking-widest text-sm font-display">
             <span className="text-orange-500 cursor-pointer">Home</span>
-            <span className="hover:text-orange-500 cursor-pointer transition-colors">History</span>
+            <span onClick={handleOpenHistory} className="hover:text-orange-500 cursor-pointer transition-colors">History</span>
             <span className="hover:text-orange-500 cursor-pointer transition-colors">Q-Lounge</span>
             <span className="hover:text-orange-500 cursor-pointer transition-colors">VIP Stage</span>
             <span className="text-orange-500 cursor-pointer">Tickets</span>
@@ -240,12 +292,7 @@ export default function App() {
            >
              {baseLang === 'es-ES' ? 'EN | DE' : 'DE | ES'}
            </button>
-           <button 
-             onClick={() => setIsConfiguring(true)}
-             className="p-1.5 bg-transparent rounded border border-white/20 hover:border-orange-500 text-white hover:text-orange-500 transition-colors"
-           >
-             <Settings className="w-4 h-4" />
-           </button>
+           
         </div>
       </nav>
 
@@ -284,7 +331,7 @@ export default function App() {
               value={transcript}
               onChange={(e) => setTranscript(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isRecording ? "Listening..." : "Tap the mic to speak, or type your message here..."}
+              placeholder={getPlaceholder()}
               className="w-full flex-1 bg-transparent text-xl md:text-2xl font-semibold leading-relaxed text-white placeholder:text-white/30 resize-none focus:outline-none"
             />
             {transcript && !isRecording && (
@@ -389,47 +436,6 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Config Overlay */}
-      <AnimatePresence>
-        {isConfiguring && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
-          >
-            <motion.div 
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              className="bg-[#0a0510] p-8 rounded-2xl w-full max-w-md border border-orange-500/30 shadow-2xl shadow-orange-500/10"
-            >
-              <h2 className="text-3xl font-black text-orange-500 mb-2 uppercase tracking-tighter">Setup</h2>
-              <p className="text-white/60 text-sm mb-6">Enter your Gemini API Key to enable the translation engine.</p>
-              
-              <div className="space-y-4">
-                <div>
-                  <input 
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Paste your API Key here..."
-                    className="w-full bg-black border border-white/20 rounded-lg px-4 py-3 text-white font-mono focus:outline-none focus:border-orange-500 transition-colors"
-                  />
-                </div>
-                
-                <button 
-                  onClick={() => setIsConfiguring(false)}
-                  disabled={!apiKey}
-                  className="w-full bg-orange-600 py-3 rounded-lg font-black uppercase tracking-widest text-white hover:bg-orange-500 disabled:opacity-50 transition-colors"
-                >
-                  Save & Continue
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {error && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 bg-red-600 text-white rounded font-bold text-sm shadow-xl border border-red-500 uppercase tracking-wide">
           {error}
@@ -438,3 +444,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
