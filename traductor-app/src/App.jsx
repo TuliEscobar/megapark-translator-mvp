@@ -219,8 +219,8 @@ export default function App() {
   };
 
   const getPlaceholder = () => {
-    if (baseLang === 'es-ES') return isRecording ? "Escuchando..." : "Toca el micrófono para hablar, o escribe tu mensaje aquí...";
-    if (baseLang === 'de-DE') return isRecording ? "Zuhören..." : "Tippen Sie auf das Mikrofon, um zu sprechen, oder schreiben Sie hier...";
+    if (baseLang === 'es-ES') return isRecording ? "Escuchando..." : "Toca el micrÃ³fono para hablar, o escribe tu mensaje aquÃ­...";
+    if (baseLang === 'de-DE') return isRecording ? "ZuhÃ¶ren..." : "Tippen Sie auf das Mikrofon, um zu sprechen, oder schreiben Sie hier...";
     return isRecording ? "Listening..." : "Tap the mic to speak, or type your message here...";
   };
 
