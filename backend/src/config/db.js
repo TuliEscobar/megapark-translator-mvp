@@ -34,8 +34,18 @@ const connectDB = async () => {
         translated_text TEXT NOT NULL,
         source_language VARCHAR(50) NOT NULL,
         target_language VARCHAR(50) NOT NULL,
+        recommendation TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+    // Aseguramos que la columna recommendation existe por si la tabla ya estaba creada
+    await client.query(`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='translations' AND column_name='recommendation') THEN
+          ALTER TABLE translations ADD COLUMN recommendation TEXT;
+        END IF;
+      END $$;
     `);
     console.log('[PostgreSQL] Tabla "translations" verificada/creada');
     

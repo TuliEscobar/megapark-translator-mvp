@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Trash2, Send, Volume2, Sparkles } from 'lucide-react';
+import { Mic, Square, Trash2, Send, Volume2, Sparkles, Lightbulb } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { clsx } from 'clsx';
@@ -20,6 +20,7 @@ export default function App() {
   const [historyList, setHistoryList] = useState([]);
 
   const recognitionRef = useRef(null);
+  const finalTranscriptRef = useRef('');
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -40,33 +41,28 @@ export default function App() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = baseLang;
-
-    recognition.onresult = (event) => {
-      let fullTranscript = '';
-      for (let i = 0; i < event.results.length; ++i) {
-        fullTranscript += event.results[i][0].transcript;
-      }
-      setTranscript(fullTranscript);
+    recognition.onstart = () => {
+      finalTranscriptRef.current = '';
+      if (!transcript) setTranscript('');
     };
-
+    recognition.onresult = (event) => {
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) final += event.results[i][0].transcript;
+        else interim += event.results[i][0].transcript;
+      }
+      if (final) finalTranscriptRef.current += ' ' + final;
+      setTranscript((finalTranscriptRef.current + ' ' + interim).trim());
+    };
     recognition.onerror = (event) => {
       if (event.error !== 'no-speech') setIsRecording(false);
     };
-
     recognition.onend = () => {
       setIsRecording(false);
-      // Procesar al terminar si hay texto
-      // Usamos un pequeño timeout para asegurar que el último onresult se procesó
-      setTimeout(() => {
-        setTranscript(prev => {
-          if (prev.trim()) {
-            processTranslation(prev.trim());
-          }
-          return prev;
-        });
-      }, 500);
+      const textToProcess = finalTranscriptRef.current.trim();
+      if (textToProcess) processTranslation(textToProcess);
     };
-
     recognitionRef.current = recognition;
   }, [baseLang]);
 
@@ -95,27 +91,61 @@ export default function App() {
     if (!apiKey || !text || isProcessing) return;
     setIsProcessing(true);
     setTranscript('');
+    finalTranscriptRef.current = '';
 
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const prompt = `Identify the language. If Spanish, translate to German and English. If German, translate to Spanish and English. If English, translate to Spanish and German. JSON: {detected, transA, langA, transB, langB}. Text: "${text}"`;
+      
+      const prompt = `Task: Translate the following text.
+      1. If mainly Spanish, translate to German and English.
+      2. If mainly German, translate to Spanish and English.
+      3. If mainly English, translate to Spanish and German.
+      
+      SPECIAL INSTRUCTION: If the detected language is GERMAN and the text sounds like a complaint, dissatisfaction, or a problem, provide a short, professional "recommendation" in SPANISH on how the staff should handle it or respond.
+      
+      Return ONLY a JSON object:
+      {
+        "detected": "Language Name",
+        "transA": "Translation A",
+        "langA": "Language A",
+        "transB": "Translation B",
+        "langB": "Language B",
+        "recommendation": "Staff advice in Spanish here or null if not a German complaint"
+      }
+      
+      Text: "${text}"`;
+      
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const raw = result.response.text();
       const cleaned = raw.replace(/```json|```/g, '').trim();
       const response = JSON.parse(cleaned);
+
       if (response) {
         const formattedTranslated = `[${response.langA}] ${response.transA}\n[${response.langB}] ${response.transB}`;
         const saved = await saveTranslation({
           original_text: text,
           translated_text: formattedTranslated,
           source_language: response.detected || baseLang,
-          target_language: `${response.langA}/${response.langB}`
+          target_language: `${response.langA}/${response.langB}`,
+          recommendation: response.recommendation
         });
-        if (saved && saved.success) setHistoryList(prev => [...prev, saved.data]);
-        else setHistoryList(prev => [...prev, { id: Date.now(), original_text: text, translated_text: formattedTranslated, source_language: response.detected || baseLang, created_at: new Date().toISOString() }]);
+
+        if (saved && saved.success) {
+          setHistoryList(prev => [...prev, saved.data]);
+        } else {
+          setHistoryList(prev => [...prev, {
+            id: Date.now(),
+            original_text: text,
+            translated_text: formattedTranslated,
+            source_language: response.detected || baseLang,
+            created_at: new Date().toISOString(),
+            recommendation: response.recommendation
+          }]);
+        }
       }
     } catch (err) {
+      console.error("Translation Error:", err);
       setError('Error en la traducción.');
       setTimeout(() => setError(''), 5000);
     } finally {
@@ -173,7 +203,6 @@ export default function App() {
     <div className="fixed inset-0 flex flex-col bg-[#0a0510] text-white overflow-hidden">
       <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#1a0b2e] via-[#0a0510] to-[#0a0510] opacity-80" />
       
-      {/* Navbar con altura fija y botones refinados */}
       <nav className="relative z-20 w-full h-16 bg-[#050208]/90 backdrop-blur-md border-b border-orange-600/30 flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full border border-orange-500/50 overflow-hidden">
@@ -189,9 +218,7 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Area de Chat con scroll y padding corregido */}
       <main className="relative z-10 flex-1 overflow-y-auto custom-scrollbar scroll-smooth flex flex-col px-4 pt-4 pb-24 overscroll-contain">
-        
         {historyList.length === 0 && !transcript && !isProcessing && (
           <div className="flex flex-col items-center justify-center flex-1 text-center opacity-30 my-auto">
             <div className="w-16 h-16 mb-4 rounded-full border border-white/10 overflow-hidden grayscale">
@@ -223,6 +250,17 @@ export default function App() {
                       </div>
                     );
                   })}
+                  
+                  {/* Nueva sección de recomendación para quejas en alemán */}
+                  {item.recommendation && (
+                    <div className="mt-2 p-3 bg-blue-500/10 border border-blue-400/30 rounded-xl flex gap-3 items-start animate-pulse">
+                      <Lightbulb className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Tulito's Advice</p>
+                        <p className="text-xs text-blue-100/90 font-medium italic">"{item.recommendation}"</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             );
@@ -244,7 +282,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Footer minimalista estilo cápsula */}
       <footer className="absolute bottom-0 left-0 right-0 z-30 p-4 bg-gradient-to-t from-[#0a0510] to-transparent shrink-0 pb-8">
         <div className="max-w-xl mx-auto flex items-center gap-2 bg-[#1a0b2e]/80 backdrop-blur-2xl border border-white/10 p-2 rounded-full shadow-2xl">
           <button onClick={toggleRecording} className={cn("w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all shadow-lg", isRecording ? "bg-red-600 mic-active" : "bg-orange-600 shadow-orange-600/40")}>
@@ -265,7 +302,7 @@ export default function App() {
       </footer>
 
       {error && (
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-600 text-white rounded-full text-[9px] font-black uppercase shadow-2xl border border-red-500">
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-600 text-white rounded-full text-[10px] font-black uppercase shadow-2xl border border-red-500">
           {error}
         </div>
       )}

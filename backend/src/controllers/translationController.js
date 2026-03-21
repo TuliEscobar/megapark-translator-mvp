@@ -13,7 +13,7 @@ const getTranslations = async (req, res, next) => {
 
 const createTranslation = async (req, res, next) => {
   try {
-    const { original_text, translated_text, source_language, target_language } = req.body;
+    const { original_text, translated_text, source_language, target_language, recommendation } = req.body;
 
     // Validación básica de parámetros (vital para @security-auditor)
     if (!original_text || !translated_text || !source_language || !target_language) {
@@ -24,7 +24,8 @@ const createTranslation = async (req, res, next) => {
       original_text,
       translated_text,
       source_language,
-      target_language
+      target_language,
+      recommendation
     });
 
     return res.status(201).json({ success: true, data: newTranslation });

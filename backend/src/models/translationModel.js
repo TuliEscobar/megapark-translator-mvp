@@ -2,13 +2,13 @@ const { pool } = require('../config/db');
 
 // @sql-best-practices: Queries siempre parametrizadas ($1, $2, etc.) para evitar inyección SQL
 const TranslationModel = {
-  create: async ({ original_text, translated_text, source_language, target_language }) => {
+  create: async ({ original_text, translated_text, source_language, target_language, recommendation }) => {
     const query = `
-      INSERT INTO translations (original_text, translated_text, source_language, target_language)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO translations (original_text, translated_text, source_language, target_language, recommendation)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *;
     `;
-    const values = [original_text, translated_text, source_language, target_language];
+    const values = [original_text, translated_text, source_language, target_language, recommendation];
     
     const { rows } = await pool.query(query, values);
     return rows[0];

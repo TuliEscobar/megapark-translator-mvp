@@ -1,7 +1,7 @@
 // Detectamos si estamos en desarrollo local o en producción (Render)
 const API_URL = import.meta.env.DEV ? 'http://localhost:4000/api' : '/api';
 
-export const saveTranslation = async ({ original_text, translated_text, source_language, target_language }) => {
+export const saveTranslation = async ({ original_text, translated_text, source_language, target_language, recommendation }) => {
   try {
     const response = await fetch(`${API_URL}/translations`, {
       method: 'POST',
@@ -12,7 +12,8 @@ export const saveTranslation = async ({ original_text, translated_text, source_l
         original_text,
         translated_text,
         source_language,
-        target_language
+        target_language,
+        recommendation
       }),
     });
     return await response.json();
