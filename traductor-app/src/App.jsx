@@ -102,7 +102,7 @@ export default function App() {
       2. If mainly German, translate to Spanish and English.
       3. If mainly English, translate to Spanish and German.
       
-      SPECIAL INSTRUCTION: If the detected language is GERMAN and the text sounds like a complaint, dissatisfaction, or a problem, provide a short, professional "recommendation" in SPANISH on how the staff should handle it or respond.
+      SPECIAL INSTRUCTION: ONLY if the detected language is GERMAN and the text sounds like a complaint or problem, provide a short, professional "recommendation" in SPANISH on how the staff should handle it. If the language is NOT German, the "recommendation" field MUST be null.
       
       Return ONLY a JSON object:
       {
@@ -111,7 +111,7 @@ export default function App() {
         "langA": "Language A",
         "transB": "Translation B",
         "langB": "Language B",
-        "recommendation": "Staff advice in Spanish here or null if not a German complaint"
+        "recommendation": "Staff advice in Spanish here or null"
       }
       
       Text: "${text}"`;
@@ -155,19 +155,20 @@ export default function App() {
   };
 
   const handleUseAdvice = (advice) => {
-    const prompt = `Based on this professional advice: "${advice}", generate a professional and polite response in SPANISH. Then, translate that response to GERMAN and ENGLISH.
+    const prompt = `Based on this professional advice: "${advice}", generate a professional response in SPANISH. 
+    Then, translate that response ONLY to GERMAN (the language the client was speaking).
     
     Return ONLY a JSON object:
     {
       "detected": "Spanish",
       "transA": "German Translation",
       "langA": "German",
-      "transB": "English Translation",
-      "langB": "English",
+      "transB": "",
+      "langB": "",
       "recommendation": null
     }
     
-    The original text for the "original_text" field should be the result of the professional response in Spanish.`;
+    The response for the customer should be polite and typical of Megapark staff.`;
 
     processTranslation(advice, prompt);
   };
