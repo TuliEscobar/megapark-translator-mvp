@@ -6,18 +6,39 @@
 }
 
 @layer base {
+  :root {
+    /* Solución definitiva para el alto en móviles */
+    --app-height: 100%;
+  }
+
+  html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Evita el scroll doble del navegador */
+    position: fixed; /* Evita el rebote de la barra de direcciones en iOS */
+  }
+
   body {
-    @apply bg-[#020617] text-slate-100 min-h-screen selection:bg-blue-500/30;
+    @apply bg-[#0a0510] text-slate-100 selection:bg-orange-500/30;
+    font-family: var(--font-sans);
   }
 }
 
 @layer utilities {
-  .glass {
-    @apply backdrop-blur-2xl bg-white/5 border border-white/10;
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
   }
-  
-  .glow-blue {
-    box-shadow: 0 0 80px -20px rgba(59, 130, 246, 0.3);
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(234, 88, 12, 0.2);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(234, 88, 12, 0.5);
   }
 }
 

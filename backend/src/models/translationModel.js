@@ -16,9 +16,12 @@ const TranslationModel = {
 
   getAll: async (limit = 50) => {
     const query = `
-      SELECT * FROM translations 
-      ORDER BY created_at DESC 
-      LIMIT $1;
+      SELECT * FROM (
+        SELECT * FROM translations 
+        ORDER BY created_at DESC 
+        LIMIT $1
+      ) sub 
+      ORDER BY created_at ASC;
     `;
     const { rows } = await pool.query(query, [limit]);
     return rows;
