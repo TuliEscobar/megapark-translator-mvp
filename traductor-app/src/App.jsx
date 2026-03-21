@@ -18,7 +18,6 @@ export default function App() {
   const [error, setError] = useState('');
   const [baseLang, setBaseLang] = useState('es-ES');
   const [historyList, setHistoryList] = useState([]);
-  const [showHistory, setShowHistory] = useState(false); // Used for modal if needed, or we can remove the modal
 
   const recognitionRef = useRef(null);
   const finalTranscriptRef = useRef('');
@@ -27,8 +26,6 @@ export default function App() {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-
 
   useEffect(() => {
     scrollToBottom();
@@ -208,8 +205,6 @@ export default function App() {
   };
 
   const clearChat = () => {
-    // Si queremos borrar de la BD habría que hacer un endpoint DELETE,
-    // por ahora solo limpiamos la vista local
     setHistoryList([]);
     setTranscript('');
     finalTranscriptRef.current = '';
@@ -231,19 +226,18 @@ export default function App() {
     const lower = sourceLang.toLowerCase();
     if (baseLang === 'es-ES') return lower.includes('spanish') || lower.includes('español') || lower.includes('es');
     if (baseLang === 'de-DE') return lower.includes('german') || lower.includes('alemán') || lower.includes('de');
-    return true; // Default fallback
+    return true; 
   };
 
   return (
-    <div className="flex flex-col h-screen w-full relative overflow-hidden font-sans bg-[#0a0510]">
-      {/* Background ambient light */}
+    <div className="flex flex-col h-[100dvh] w-full relative overflow-hidden font-sans bg-[#0a0510]">
       <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#1a0b2e] via-[#0a0510] to-[#0a0510] opacity-80" />
       <div className="absolute top-[20%] left-[-10%] w-[50%] h-[50%] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Navbar */}
       <nav className="relative z-10 w-full bg-[#050208] border-b border-orange-600/30 flex items-center justify-between px-4 md:px-8 py-3 shadow-xl">
         <div className="flex items-center gap-6">
-          <div className="w-12 h-12 rounded-full border-2 border-orange-500/50 flex items-center justify-center bg-black overflow-hidden relative shadow-[0_0_15px_rgba(234,88,12,0.3)]">
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-orange-500/50 flex items-center justify-center bg-black overflow-hidden relative shadow-[0_0_15px_rgba(234,88,12,0.3)]">
              <img src="/megapark-logo.jpg" alt="Megapark" className="w-full h-full object-cover" />
              <div className="absolute inset-0 border-[1px] border-dashed border-orange-500/80 rounded-full animate-[spin_10s_linear_infinite] pointer-events-none" />
           </div>
@@ -251,22 +245,19 @@ export default function App() {
             <span className="text-orange-500 cursor-pointer">Live Chat</span>
             <span className="hover:text-orange-500 cursor-pointer transition-colors">Q-Lounge</span>
             <span className="hover:text-orange-500 cursor-pointer transition-colors">VIP Stage</span>
-            <span className="text-orange-500 cursor-pointer">Tickets</span>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
            <button 
              onClick={clearChat}
-             className="px-3 py-1 bg-transparent rounded text-xs font-bold text-white/50 border border-white/20 hover:border-red-500 hover:text-red-500 transition-all uppercase flex items-center gap-1"
-             title="Clear chat view"
+             className="px-2 py-1 bg-transparent rounded text-[10px] md:text-xs font-bold text-white/50 border border-white/20 hover:border-red-500 hover:text-red-500 transition-all uppercase flex items-center gap-1"
            >
              <Trash2 className="w-3 h-3" /> Clear
            </button>
            <button 
              onClick={toggleLanguage}
-             className="px-3 py-1 bg-transparent rounded text-xs font-bold text-orange-500 border border-orange-500 hover:bg-orange-500 hover:text-black transition-all uppercase"
-             title="Change my language"
+             className="px-2 py-1 bg-transparent rounded text-[10px] md:text-xs font-bold text-orange-500 border border-orange-500 hover:bg-orange-500 hover:text-black transition-all uppercase"
            >
              {baseLang === 'es-ES' ? 'YO: ES' : 'YO: DE'}
            </button>
@@ -274,21 +265,21 @@ export default function App() {
       </nav>
 
       {/* Chat Area */}
-      <main className="relative z-10 flex-1 flex flex-col p-4 md:p-8 overflow-y-auto custom-scrollbar max-w-4xl mx-auto w-full pb-32">
+      <main className="relative z-10 flex-1 flex flex-col p-4 md:p-8 overflow-y-auto overscroll-y-contain custom-scrollbar scroll-smooth max-w-4xl mx-auto w-full pb-32">
         
         {/* Welcome message bubble */}
-        <div className="flex flex-col items-center mb-8 mt-4 text-center">
-          <div className="bg-black/60 border border-orange-500/20 backdrop-blur-md rounded-2xl px-6 py-4 shadow-xl">
-            <h1 className="text-2xl font-black text-orange-500 uppercase tracking-tighter" style={{ textShadow: '1px 1px 0px rgba(0,0,0,0.8)' }}>
-              MEGAPARK LIVE TRANSLATOR
-            </h1>
-            <p className="text-white/60 text-xs mt-1 font-medium tracking-wide uppercase">
-              Speak or type. Your translation history will appear here.
+        {historyList.length === 0 && !transcript && !isProcessing && (
+          <div className="flex flex-col items-center justify-center flex-1 text-center my-auto opacity-80">
+            <div className="w-20 h-20 mb-4 rounded-full border-2 border-orange-500/20 overflow-hidden shadow-2xl">
+               <img src="/megapark-logo.jpg" alt="Megapark" className="w-full h-full object-cover" />
+            </div>
+            <h1 className="text-2xl font-black text-orange-500 uppercase tracking-tighter">MEGAPARK LIVE</h1>
+            <p className="text-white/40 text-[10px] mt-2 font-bold tracking-[0.2em] uppercase">
+              {baseLang === 'es-ES' ? 'Habla o escribe para traducir' : 'Sprechen oder tippen para comenzar'}
             </p>
           </div>
-        </div>
+        )}
 
-        {/* Chat Bubbles */}
         <div className="flex flex-col gap-6">
           {historyList.map((item) => {
             const own = isOwnMessage(item.source_language);
@@ -297,31 +288,23 @@ export default function App() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 key={item.id} 
-                className={cn("flex flex-col max-w-[85%]", own ? "self-end items-end" : "self-start items-start")}
+                className={cn("flex flex-col max-w-[90%]", own ? "self-end items-end" : "self-start items-start")}
               >
-                <span className="text-[10px] text-white/40 mb-1 px-2 uppercase tracking-widest font-bold">
-                  {item.source_language}
-                </span>
-                
                 <div className={cn(
-                  "p-4 rounded-2xl shadow-xl border backdrop-blur-md flex flex-col gap-3 relative group",
+                  "p-4 rounded-2xl shadow-xl border backdrop-blur-md flex flex-col gap-3 relative",
                   own 
                     ? "bg-orange-950/40 border-orange-500/30 rounded-br-sm" 
                     : "bg-purple-950/40 border-purple-500/30 rounded-bl-sm"
                 )}>
-                  {/* Texto original grande */}
-                  <p className="text-xl md:text-2xl font-bold text-white leading-snug">
+                  <p className="text-lg md:text-xl font-bold text-white leading-snug">
                     {item.original_text}
                   </p>
                   
-                  {/* Linea separadora */}
                   <div className={cn("h-px w-full opacity-30", own ? "bg-orange-500" : "bg-purple-500")} />
                   
-                  {/* Traducciónes */}
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-3">
                     {item.translated_text.split('\n').map((line, idx) => {
                       if (!line.trim()) return null;
-                      // Formato esperado: [English] Hello
                       const match = line.match(/\[(.*?)\]\s*(.*)/);
                       const lang = match ? match[1] : '';
                       const txt = match ? match[2] : line;
@@ -330,14 +313,14 @@ export default function App() {
                         <div key={idx} className="flex flex-col items-start gap-1 w-full">
                           {lang && <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold block">{lang}</span>}
                           <div className="flex items-start justify-between w-full gap-4">
-                            <p className="text-base md:text-lg text-orange-200/90 font-medium">
+                            <p className="text-base md:text-lg text-orange-200/90 font-medium leading-tight">
                               {txt}
                             </p>
                             <button 
                               onClick={() => speakText(txt, lang)}
-                              className="p-1.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors shrink-0"
+                              className="p-2 bg-white/5 rounded-full text-white/50 hover:text-white transition-colors shrink-0"
                             >
-                              <Volume2 className="w-5 h-5" />
+                              <Volume2 className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
@@ -349,13 +332,8 @@ export default function App() {
             );
           })}
 
-          {/* Current Transcript Bubble (while talking) */}
           {transcript && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col max-w-[85%] self-end items-end"
-            >
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col max-w-[90%] self-end items-end">
               <div className="p-4 rounded-2xl shadow-xl border border-orange-500/50 bg-orange-900/20 backdrop-blur-md rounded-br-sm">
                 <p className="text-lg md:text-xl font-bold text-white/80 leading-snug">
                   {transcript}
@@ -365,18 +343,12 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* Processing Indicator Bubble */}
           <AnimatePresence>
             {isProcessing && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="flex flex-col max-w-[85%] self-start items-start"
-              >
+              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="flex flex-col max-w-[90%] self-start items-start">
                  <div className="p-3 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md rounded-bl-sm flex items-center gap-2">
                    <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
-                   <span className="text-xs font-bold text-purple-300 uppercase tracking-widest animate-pulse">Translating...</span>
+                   <span className="text-[10px] font-bold text-purple-300 uppercase tracking-widest animate-pulse">Translating...</span>
                  </div>
               </motion.div>
             )}
@@ -387,21 +359,14 @@ export default function App() {
       </main>
 
       {/* Input Footer */}
-      <footer className="absolute bottom-0 left-0 right-0 z-20 p-4 md:p-6 flex justify-center bg-gradient-to-t from-black via-[#0a0510] to-transparent">
-        <div className="max-w-3xl w-full flex items-end gap-3 bg-black/80 backdrop-blur-xl border border-white/10 p-2 md:p-3 rounded-3xl shadow-2xl">
-          
+      <footer className="fixed bottom-0 left-0 right-0 z-20 p-4 md:p-6 flex justify-center bg-gradient-to-t from-black via-[#0a0510] to-transparent">
+        <div className="max-w-3xl w-full flex items-end gap-2 md:gap-3 bg-black/80 backdrop-blur-xl border border-white/10 p-2 rounded-3xl shadow-2xl">
           <button 
             onClick={toggleRecording}
-            className={cn(
-              "w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg",
-              isRecording 
-                ? "bg-red-600 shadow-red-600/50" 
-                : "bg-orange-600 hover:bg-orange-500 shadow-orange-600/30"
-            )}
+            className={cn("w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all duration-300", isRecording ? "bg-red-600 shadow-red-600/50" : "bg-orange-600 shadow-orange-600/30")}
           >
             {isRecording ? <Square className="text-white w-5 h-5" fill="currentColor" /> : <Mic className="text-white w-6 h-6" />}
           </button>
-
           <textarea
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
@@ -411,12 +376,8 @@ export default function App() {
             rows={1}
             style={{ minHeight: '48px' }}
           />
-
           {!isRecording && transcript.trim() && (
-            <button 
-              onClick={handleManualTranslate}
-              className="w-12 h-12 shrink-0 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-all"
-            >
+            <button onClick={handleManualTranslate} className="w-12 h-12 shrink-0 bg-white/10 text-white rounded-full flex items-center justify-center transition-all">
               <Send className="w-5 h-5 ml-1" />
             </button>
           )}
@@ -424,11 +385,10 @@ export default function App() {
       </footer>
 
       {error && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 bg-red-600 text-white rounded font-bold text-sm shadow-xl border border-red-500 uppercase tracking-wide">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 bg-red-600 text-white rounded font-bold text-xs shadow-xl border border-red-500 uppercase tracking-wide">
           {error}
         </div>
       )}
     </div>
   );
 }
-
