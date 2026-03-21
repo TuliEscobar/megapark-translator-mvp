@@ -20,7 +20,6 @@ export default function App() {
   const [historyList, setHistoryList] = useState([]);
 
   const recognitionRef = useRef(null);
-  const finalTranscriptRef = useRef('');
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -41,28 +40,31 @@ export default function App() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = baseLang;
-    recognition.onstart = () => {
-      finalTranscriptRef.current = '';
-      if (!transcript) setTranscript('');
-    };
+
     recognition.onresult = (event) => {
-      let interim = '';
-      let final = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) final += event.results[i][0].transcript;
-        else interim += event.results[i][0].transcript;
+      let fullTranscript = '';
+      for (let i = 0; i < event.results.length; ++i) {
+        fullTranscript += event.results[i][0].transcript;
       }
-      if (final) finalTranscriptRef.current += ' ' + final;
-      setTranscript((finalTranscriptRef.current + ' ' + interim).trim());
+      setTranscript(fullTranscript);
     };
+
     recognition.onerror = (event) => {
       if (event.error !== 'no-speech') setIsRecording(false);
     };
+
     recognition.onend = () => {
       setIsRecording(false);
-      const textToProcess = finalTranscriptRef.current.trim();
-      if (textToProcess) processTranslation(textToProcess);
+      setTimeout(() => {
+        setTranscript(prev => {
+          if (prev.trim()) {
+            processTranslation(prev.trim());
+          }
+          return prev;
+        });
+      }, 500);
     };
+
     recognitionRef.current = recognition;
   }, [baseLang]);
 
@@ -87,16 +89,15 @@ export default function App() {
     }
   };
 
-  const processTranslation = async (text) => {
+  const processTranslation = async (text, customPrompt = null) => {
     if (!apiKey || !text || isProcessing) return;
     setIsProcessing(true);
     setTranscript('');
-    finalTranscriptRef.current = '';
 
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       
-      const prompt = `Task: Translate the following text.
+      const defaultPrompt = `Task: Translate the following text.
       1. If mainly Spanish, translate to German and English.
       2. If mainly German, translate to Spanish and English.
       3. If mainly English, translate to Spanish and German.
@@ -116,7 +117,7 @@ export default function App() {
       Text: "${text}"`;
       
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent(customPrompt || defaultPrompt);
       const raw = result.response.text();
       const cleaned = raw.replace(/```json|```/g, '').trim();
       const response = JSON.parse(cleaned);
@@ -153,6 +154,24 @@ export default function App() {
     }
   };
 
+  const handleUseAdvice = (advice) => {
+    const prompt = `Based on this professional advice: "${advice}", generate a professional and polite response in SPANISH. Then, translate that response to GERMAN and ENGLISH.
+    
+    Return ONLY a JSON object:
+    {
+      "detected": "Spanish",
+      "transA": "German Translation",
+      "langA": "German",
+      "transB": "English Translation",
+      "langB": "English",
+      "recommendation": null
+    }
+    
+    The original text for the "original_text" field should be the result of the professional response in Spanish.`;
+
+    processTranslation(advice, prompt);
+  };
+
   const handleManualTranslate = () => {
     if (transcript.trim()) processTranslation(transcript.trim());
   };
@@ -187,7 +206,7 @@ export default function App() {
 
   const getPlaceholder = () => {
     if (baseLang === 'es-ES') return isRecording ? "Escuchando..." : "Escribe o habla...";
-    if (baseLang === 'de-DE') return isRecording ? "Zuhören..." : "Schreiben oder sprechen...";
+    if (baseLang === 'de-DE') return isRecording ? "Zuhören..." : "Schreiben o. sprechen...";
     return isRecording ? "Listening..." : "Type or speak...";
   };
 
@@ -213,7 +232,7 @@ export default function App() {
         <div className="flex items-center gap-3">
            <button onClick={clearChat} className="p-2 text-white/30 hover:text-white transition-colors"><Trash2 className="w-4 h-4" /></button>
            <button onClick={toggleLanguage} className="px-4 py-2 rounded-full text-[10px] font-black text-black bg-orange-600 uppercase shadow-lg active:scale-95 transition-transform">
-             {baseLang === 'es-ES' ? 'ESPAÑOL' : 'DEUTSCH'}
+             {baseLang === 'es-ES' ? 'YO: ESPAÑOL' : 'YO: DEUTSCH'}
            </button>
         </div>
       </nav>
@@ -251,15 +270,21 @@ export default function App() {
                     );
                   })}
                   
-                  {/* Nueva sección de recomendación para quejas en alemán */}
                   {item.recommendation && (
-                    <div className="mt-2 p-3 bg-blue-500/10 border border-blue-400/30 rounded-xl flex gap-3 items-start animate-pulse">
+                    <motion.div 
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => handleUseAdvice(item.recommendation)}
+                      className="mt-2 p-3 bg-blue-500/10 border border-blue-400/30 rounded-xl flex gap-3 items-start cursor-pointer hover:bg-blue-500/20 transition-all border-dashed"
+                    >
                       <Lightbulb className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Tulito's Advice</p>
+                        <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                          Tulito's Advice <span className="text-[7px] bg-blue-500 text-black px-1 rounded">TAP TO USE</span>
+                        </p>
                         <p className="text-xs text-blue-100/90 font-medium italic">"{item.recommendation}"</p>
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               </motion.div>
