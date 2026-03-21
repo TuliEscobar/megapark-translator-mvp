@@ -94,11 +94,12 @@ export default function App() {
 
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
+      
       const defaultPrompt = `Task: Translate the following text.
       1. If mainly Spanish, translate to German and English.
       2. If mainly German, translate to Spanish and English.
       3. If mainly English, translate to Spanish and German.
-      SPECIAL INSTRUCTION: ONLY if the detected language is GERMAN and the text sounds like a complaint, provide a VERY SHORT (max 12 words) action recommendation in SPANISH.
+      SPECIAL INSTRUCTION: ONLY if the detected language is GERMAN and the text sounds like a complaint or problem, provide a very short, polite and professional response in SPANISH (max 15 words) as a "recommendation" for the staff to say back.
       Return ONLY JSON: {"detected", "transA", "langA", "transB", "langB", "recommendation"}. Text: "${text}"`;
       
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -119,10 +120,11 @@ export default function App() {
 
         const formattedTranslated = `[${lA}] ${tA}${tB ? `\n[${lB}] ${tB}` : ''}`;
         
-        // Cuando usamos un consejo, el "original" que guardamos es la respuesta generada
-        // pero para evitar la duplicidad visual, si el customPrompt existe, guardamos solo la respuesta
+        // El texto original a guardar
+        const finalOriginalText = (customPrompt && response.langB === 'Spanish') ? response.transB : text;
+
         const saved = await saveTranslation({
-          original_text: customPrompt ? "Respuesta automática" : text,
+          original_text: finalOriginalText,
           translated_text: formattedTranslated,
           source_language: response.detected || baseLang,
           target_language: `${lA}/${lB}`,
@@ -130,7 +132,7 @@ export default function App() {
         });
 
         if (saved && saved.success) setHistoryList(prev => [...prev, saved.data]);
-        else setHistoryList(prev => [...prev, { id: Date.now(), original_text: customPrompt ? "Respuesta automática" : text, translated_text: formattedTranslated, source_language: response.detected || baseLang, created_at: new Date().toISOString(), recommendation: response.recommendation }]);
+        else setHistoryList(prev => [...prev, { id: Date.now(), original_text: finalOriginalText, translated_text: formattedTranslated, source_language: response.detected || baseLang, created_at: new Date().toISOString(), recommendation: response.recommendation }]);
       }
     } catch (err) {
       setError('Error en la traducción.');
@@ -140,7 +142,17 @@ export default function App() {
   };
 
   const handleUseAdvice = (advice) => {
-    const prompt = `Based on: "${advice}", generate a professional response in SPANISH. Then translate ONLY to GERMAN. Return JSON: {"detected": "Spanish", "transA": "German Translation", "langA": "German", "transB": "", "langB": ""}`;
+    // Usamos el consejo (que ya es una respuesta en español) para generar la traducción al alemán
+    const prompt = `Translate this response from staff to a customer into GERMAN: "${advice}". 
+    Return ONLY a JSON object:
+    {
+      "detected": "Spanish",
+      "transA": "German Translation",
+      "langA": "German",
+      "transB": "${advice}",
+      "langB": "Spanish",
+      "recommendation": null
+    }`;
     processTranslation(advice, prompt);
   };
 
