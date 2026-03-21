@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Globe, Sparkles, Settings, Trash2, Languages, Send, Volume2, Shield } from 'lucide-react';
+import { Mic, Square, Globe, Sparkles, Settings, Trash2, Languages, Send, Volume2, Shield, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { saveTranslation } from './services/api';
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -142,6 +143,14 @@ export default function App() {
         setLangA(response.langA || '');
         setTranslationB(response.transB || '');
         setLangB(response.langB || '');
+        
+        // Guardar asíncronamente en PostgreSQL sin bloquear el UI
+        saveTranslation({
+          original_text: text,
+          translated_text: `[${response.langA}] ${response.transA} | [${response.langB}] ${response.transB}`,
+          source_language: response.detected || baseLang,
+          target_language: `${response.langA}/${response.langB}`
+        }).catch(err => console.error('Error al guardar en BD:', err));
       }
     } catch (err) {
       console.error("Translation Error:", err);
