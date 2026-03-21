@@ -4,8 +4,9 @@ WORKDIR /app/frontend
 COPY traductor-app/package*.json ./
 RUN npm install
 COPY traductor-app/ ./
-# Pasamos la variable de entorno vacía temporalmente (se debe inyectar en runtime)
-ENV VITE_GEMINI_API_KEY=""
+# Aceptamos la variable de entorno desde la plataforma de despliegue (Render)
+ARG VITE_GEMINI_API_KEY
+ENV VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY
 RUN npm run build
 
 # Etapa 2: Setup del Backend (Express)
