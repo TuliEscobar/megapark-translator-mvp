@@ -99,7 +99,9 @@ export default function App() {
       1. If mainly Spanish, translate to German and English.
       2. If mainly German, translate to Spanish and English.
       3. If mainly English, translate to Spanish and German.
-      SPECIAL INSTRUCTION: ONLY if the detected language is GERMAN and the text sounds like a complaint or problem, provide a very short, polite and professional response in SPANISH (max 15 words) as a "recommendation" for the staff to say back.
+      
+      SPECIAL INSTRUCTION: ONLY if the detected language is GERMAN and the text sounds like a complaint or problem, provide a short, professional and empathy-focused response in SPANISH (max 20 words) as a "recommendation". This should be exactly what the staff should say back to the customer.
+      
       Return ONLY JSON: {"detected", "transA", "langA", "transB", "langB", "recommendation"}. Text: "${text}"`;
       
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -113,21 +115,24 @@ export default function App() {
         let tB = response.transB;
         let lB = response.langB;
 
+        // Prioridad Alemán arriba
         if (lB.toLowerCase().includes('german')) {
           [tA, tB] = [tB, tA];
           [lA, lB] = [lB, lA];
         }
 
-        const formattedTranslated = `[${lA}] ${tA}${tB ? `\n[${lB}] ${tB}` : ''}`;
+        // Si es un consejo, no queremos duplicar el español en la lista de traducciones secundarias
+        const formattedTranslated = (customPrompt) 
+          ? `[${lA}] ${tA}` 
+          : `[${lA}] ${tA}${tB ? `\n[${lB}] ${tB}` : ''}`;
         
-        // El texto original a guardar
-        const finalOriginalText = (customPrompt && response.langB === 'Spanish') ? response.transB : text;
+        const finalOriginalText = (customPrompt && lB === 'Spanish') ? tB : text;
 
         const saved = await saveTranslation({
           original_text: finalOriginalText,
           translated_text: formattedTranslated,
           source_language: response.detected || baseLang,
-          target_language: `${lA}/${lB}`,
+          target_language: customPrompt ? lA : `${lA}/${lB}`,
           recommendation: response.recommendation
         });
 
@@ -142,8 +147,7 @@ export default function App() {
   };
 
   const handleUseAdvice = (advice) => {
-    // Usamos el consejo (que ya es una respuesta en español) para generar la traducción al alemán
-    const prompt = `Translate this response from staff to a customer into GERMAN: "${advice}". 
+    const prompt = `Translate this staff response to GERMAN: "${advice}". 
     Return ONLY a JSON object:
     {
       "detected": "Spanish",
